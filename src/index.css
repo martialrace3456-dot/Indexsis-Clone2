@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 220 25% 10%;
+    --foreground: 210 40% 98%;
+
+    --card: 220 20% 15%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 220 25% 12%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 260 60% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 200 70% 50%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 220 15% 25%;
+    --muted-foreground: 210 20% 65%;
+
+    --accent: 320 70% 55%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 25%;
+    --input: 220 15% 20%;
+    --ring: 260 60% 55%;
+
+    --radius: 0.75rem;
+    
+    --data-primary: 180 70% 55%;
+    --data-secondary: 320 70% 60%;
+    --success: 140 60% 50%;
+    --warning: 40 90% 55%;
+    
+    --gradient-board: linear-gradient(135deg, hsl(220 25% 10%) 0%, hsl(240 30% 15%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(260 60% 55%) 0%, hsl(320 70% 55%) 100%);
+    
+    --shadow-glow: 0 0 40px hsl(260 60% 55% / 0.3);
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --certificate-background: 215 85% 7%;
+    --certificate-panel: 213 76% 10%;
+    --certificate-accent: 187 86% 57%;
+    --certificate-foreground: 210 40% 98%;
+    --certificate-muted: 220 20% 72%;
+    --certificate-trace: 207 42% 25%;
+    --brand-surface: 0 0% 100%;
+    --crop-scrim: 0 0% 0% / 0.55;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 30% 8%;
+    --foreground: 210 40% 98%;
+  }
+}
+
+@layer base {
+  @font-face {
+    font-family: 'Mono';
+    src: local('Monaco'), local('Courier New'), monospace;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .guide-spotlight { box-shadow: 0 0 0 9999px hsl(var(--background) / 0.35), 0 0 18px hsl(var(--data-primary) / 0.45); }
+  .ad-crop-selection { box-shadow: 0 0 0 9999px hsl(var(--crop-scrim)); }
+  .brand-logo-surface { background: hsl(var(--brand-surface)); }
+  @keyframes halo-sparkle {
+    0%, 100% {
+      box-shadow: 0 0 0 2px hsl(var(--primary) / 0.9), 0 0 12px 2px hsl(var(--primary) / 0.55);
+    }
+    50% {
+      box-shadow: 0 0 0 4px hsl(var(--primary) / 0.6), 0 0 26px 8px hsl(var(--primary) / 0.35);
+    }
+  }
+
+  .animate-halo {
+    animation: halo-sparkle 1.4s ease-in-out infinite;
+    border-radius: 0.5rem;
+  }
+}
