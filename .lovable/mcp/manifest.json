@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "sdk_version": "0.23.0",
+  "path": "/functions/v1/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "indexsis-mcp",
+      "version": "0.1.0",
+      "title": "Indexsis MCP"
+    },
+    "tools": [
+      {
+        "name": "get_game_info",
+        "title": "Get game info",
+        "description": "Return a description of Indexsis, its game mechanics, and the modes available to players.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_global_stats",
+        "title": "Get global stats",
+        "description": "Return the top scores from the Indexsis Global Estimator Challenge leaderboard, ordered by highest total score.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Maximum number of rows to return (default 20, max 100)."
+            }
+          },
+          "required": [
+            "limit"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_active_contests",
+        "title": "List active contests",
+        "description": "List currently active, approved private contests on Indexsis. Returns public metadata only (id, name, description, participant limit, duration, ends_at). Does not return passcodes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Maximum number of contests to return (default 50, max 200)."
+            }
+          },
+          "required": [
+            "limit"
+          ]
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_contest_stats",
+        "title": "Get contest stats",
+        "description": "Return the top scores for a specific private contest by contest id, ordered by highest total score.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "contest_id": {
+              "type": "string",
+              "description": "The contest id (UUID)."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Maximum number of rows to return (default 20, max 100)."
+            }
+          },
+          "required": [
+            "contest_id",
+            "limit"
+          ]
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
