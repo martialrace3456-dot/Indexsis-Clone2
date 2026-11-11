@@ -1,0 +1,1 @@
+ALTER TABLE public.advertiser_load_payments ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'load_fund';
