@@ -1,0 +1,15 @@
+# Requested UI adjustments
+- [x] Correct ad pricing (all factors 1) and searchable, mutually exclusive All targeting selectors; existing advertiser account checked without submitting payment.
+- [x] Add first-play/reopenable six-step density guide and centered mobile round display; completion, refresh, reopening and sampling verified.
+- [x] Add editable, saved admin Guide Settings; save/readback verified and 30 relevant tests passed.
+- [x] Build analytics dropdown filters, All/global selections, consistent chart/cards and inclusive date ranges.
+- [x] Record real played intervals and targeted visible ad exposure with aggregate runtime budgets.
+- [x] Test analytics rules and verify admin/game flows; sampled gameplay updated runtime live, All/global selections and Ads metric guard verified.
+- [x] Preserve game sign-in through navigation and refresh; compact Sign out below Start Challenge verified with real registration/login, game Back, Indexsis home navigation, refresh, and explicit sign-out; five session tests passed.
+- [x] Select ad crops against actual media pixels and share centered, undistorted rendering between preview and game board; geometry tests and controlled-image visual checks passed.
+- [ ] Verify an existing live campaign end-to-end; blocked by unavailable saved video media and no running campaigns in the authorized account.
+- [x] Replace landing header logo and favicon with uploaded logo.
+- [x] Move completed-match Rematch above scores and adjust completion/exit confirmations.
+- [x] Limit contest-name controls to contest text and remove score details.
+- [x] Add certificate downloads and sharing to global and private Stats; direct image sharing uses supported devices, otherwise download and attach.
+- [x] Verify real global/private PNG downloads, both complete-match rematches, contest-only modal triggers, five certificate tests, and clean app checks. Hosted logo confirmed; localhost certificate tests route the hosted asset only because localhost does not serve the asset gateway.
