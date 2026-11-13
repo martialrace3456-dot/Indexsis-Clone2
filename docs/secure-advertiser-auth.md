@@ -1,53 +1,49 @@
 # Secure advertiser authentication and ownership model
 
-This document captures the correct design for the advertiser feature and the reason the previous Clone2 pattern was unsafe.
+This document records the audit findings and the staged remediation for Indexsis Clone2.
 
-## What was wrong in the previous design
+## Findings verified in the repository
 
-The Clone2 migrations used patterns like:
+The existing advertiser portal is not database-secure:
 
-- `CREATE POLICY ... USING (true)`
-- `WITH CHECK (true)`
-- `GRANT SELECT, INSERT, UPDATE, DELETE ON ... TO anon, authenticated`
-- login by username/password against a `players` table
-- client-side owner filtering with no database ownership checks
+- `src/utils/playerAuth.ts` hashes passwords with plain SHA-256 in the browser, reads `password_hash` from `public.players`, and returns a player ID to the browser.
+- `src/hooks/useAdvertiserSession.ts` treats a `localStorage` value as the session. A browser-stored player ID is not a trusted identity.
+- Several migrations grant anonymous/authenticated users broad writes and use `USING (true)` / `WITH CHECK (true)` on advertiser data.
+- `src/hooks/useAdCampaigns.ts` and related hooks filter by a browser-provided owner ID. A client-side filter is not authorization.
+- Payment approval currently updates payment status and advertiser balances from browser code. That is a financial integrity issue, not just an RLS issue.
 
-Those patterns do not enforce advertiser isolation. They allow any caller with the public or authenticated key to read and modify advertiser rows, as long as the table is exposed. A browser-only filter is not a security boundary.
+Do not deploy the historical permissive advertiser migrations as a security solution.
 
-## Correct model
+## What the hardening migration does
 
-The secure model is:
+`supabase/migrations/20261113000000_secure_advertiser_identity.sql` is a fail-closed first stage:
 
-1. Advertisers and admins must use Supabase Auth (`auth.users`) rather than a custom username/password table as the source of identity.
-2. Each advertiser profile row must map to a real auth user.
-3. All advertiser and admin actions must be gated by `auth.uid()` and policy checks in the database.
-4. Admin access must be explicit via a separate admin table or Admin role, not by broad public policies.
-5. Funds, balances, bids, payments, and history must be restricted to the owner or an admin.
+- establishes an Auth-user-to-player mapping table;
+- does not link accounts automatically by username;
+- creates a database helper that maps `auth.uid()` to a linked player ID;
+- checks admin role from the authenticated request;
+- removes existing policies on advertiser tables before installing restricted policies;
+- allows public clients to read only active overlay assets and live, approved campaign rows;
+- limits signed-in advertisers to their linked owner's rows and admins to all rows;
+- revokes direct client writes to campaigns, bids, slots, balances, payments, history, and admin wallet;
+- removes overlay storage upload policies while retaining public reads.
 
-## Secure policy pattern
+This intentionally disables old browser-only advertiser sessions and some advertiser/admin write workflows until the application is migrated. That is safer than silently allowing cross-account or unauthenticated mutations.
 
-Use this pattern:
+## Not production-ready until these steps are complete
 
-- `owner_id = (SELECT id FROM public.advertiser_profiles WHERE user_id = auth.uid())`
-- `EXISTS (SELECT 1 FROM public.admins WHERE user_id = auth.uid())`
-- `USING (...)` and `WITH CHECK (...)` must check actual identity and ownership
-- never grant `anon` direct write access to advertiser tables
-- never use `USING (true)` for advertiser-owned data
+1. Migrate advertiser registration/login from `players.password_hash` to Supabase Auth. Do not collect or store a replacement password hash in client code. Username-only login needs a deliberate design because Supabase Auth uses email/phone identifiers; make recovery and verification functional rather than inventing an unowned email address.
+2. Implement account recovery and secure email verification. Do not automatically link an Auth account to a legacy `players` row based on username. Use a reviewed, verified account-link process.
+3. Provision the initial administrator through a trusted Supabase dashboard/service-role operation. Never let a browser insert into `user_roles`. Record the admin Auth UUID and have an authorized operator assign the role.
+4. Move campaign creation, payment request creation/approval, balance crediting, bids, auction-slot updates/refunds, moderation, and history writes into authenticated Edge Functions or carefully audited RPCs. Verify the caller and validate all fields server-side. Do not put a service-role key in the frontend.
+5. Update storage uploads to use authenticated owner-scoped paths and explicit storage policies.
+6. Update the frontend hooks and admin portal to use the Auth UUID/session and secure backend operations. Client-side owner filters may remain for usability but never serve as authorization.
+7. On a staging project, test both advertisers (A and B), admin, and anonymous access. Verify A cannot read, update, delete, or create records for B; non-admin cannot approve payments, alter balances, or grant roles; the game can read only active overlays/live approved ads.
+8. Reconcile the actual remote schema and data before applying migrations. A blank `Remote` column in `supabase migration list --remote` means a migration version is not recorded as applied; it does not prove that the corresponding schema objects or data are absent.
 
-## Required behavior
+## Migration caveats
 
-Advertisers:
-- can create and manage only their own campaigns
-- can read only their own balances, payments, bids, and history
-- can update only their own account/profile
-
-Admins:
-- can view all advertiser records for moderation and support
-- can approve/reject payments, pause campaigns, and remove problematic ads
-- can override only the limited admin-only actions defined in policy checks
-
-## Migration blueprint
-
-See the SQL migration file in `supabase/migrations/20261113000000_secure_advertiser_identity.sql` for the actual secure version.
-
-This migration is intentionally a secure template for the app once it is moved to real Supabase Auth for advertiser/admin identity.
+- The migration assumes the historical Clone2 migrations have created `user_roles`, `players`, and the advertiser tables. It is not a baseline for a fresh database.
+- Existing rows stay linked to legacy player IDs. Since a username match is not proof of ownership, profiles are created unlinked; a verified admin workflow must connect legitimate accounts before advertisers can see historical data.
+- The migration deliberately does not enable writes through the old portal. The UI migration and trusted server operations are required before the feature can be considered complete.
+- Test and review this SQL on a disposable/staging clone first. Do not apply it to production directly.
