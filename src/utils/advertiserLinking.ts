@@ -37,12 +37,8 @@ export async function getAdvertiserLinkStatus(): Promise<AdvertiserLinkStatus> {
 
 export async function requestAdvertiserLink(input: { username: string; note?: string }) {
   const username = input.username.trim();
-  if (username.length < 3 || username.length > 80) {
-    return { ok: false, message: "Enter a legacy username between 3 and 80 characters." };
-  }
-  if ((input.note?.length ?? 0) > 1000) {
-    return { ok: false, message: "The note must be 1,000 characters or fewer." };
-  }
+  if (username.length < 3 || username.length > 80) return { ok: false, message: "Enter a legacy username between 3 and 80 characters." };
+  if ((input.note?.length ?? 0) > 1000) return { ok: false, message: "The note must be 1,000 characters or fewer." };
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return { ok: false, message: "Sign in before requesting account verification." };
@@ -58,14 +54,17 @@ export async function requestAdvertiserLink(input: { username: string; note?: st
     console.error("Unable to submit advertiser link request", error);
     return { ok: false, message: "The verification request could not be submitted. Please try again later." };
   }
-
   return { ok: true, message: "Verification request submitted for administrator review." };
 }
 
-export async function reviewAdvertiserLinkRequest(requestId: string, decision: "approve" | "reject") {
+export async function reviewAdvertiserLinkRequest(requestId: string, decision: "approve" | "reject", verificationEvidence?: string) {
+  if (decision === "approve" && (verificationEvidence?.trim().length ?? 0) < 10) {
+    return { ok: false, message: "Record how ownership was verified (at least 10 characters) before approving." };
+  }
   const { error } = await supabase.rpc("review_advertiser_link_request" as never, {
     _request_id: requestId,
     _decision: decision,
+    _verification_evidence: verificationEvidence?.trim() || null,
   } as never);
   if (error) {
     console.error("Unable to review advertiser link request", error);

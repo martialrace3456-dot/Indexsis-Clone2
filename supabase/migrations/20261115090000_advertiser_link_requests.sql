@@ -8,11 +8,13 @@ CREATE TABLE IF NOT EXISTS public.advertiser_link_requests (
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
   reviewed_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   reviewed_at timestamptz,
+  reviewed_evidence text,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (id, user_id),
   CHECK (
-    (status = 'pending' AND reviewed_by IS NULL AND reviewed_at IS NULL)
-    OR (status IN ('approved', 'rejected') AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)
+    (status = 'pending' AND reviewed_by IS NULL AND reviewed_at IS NULL AND reviewed_evidence IS NULL)
+    OR (status = 'approved' AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND length(trim(COALESCE(reviewed_evidence, ''))) >= 10)
+    OR (status = 'rejected' AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL)
   )
 );
 
@@ -38,11 +40,13 @@ CREATE POLICY advertiser_link_requests_insert_self
     AND status = 'pending'
     AND reviewed_by IS NULL
     AND reviewed_at IS NULL
+    AND reviewed_evidence IS NULL
   );
 
 CREATE OR REPLACE FUNCTION public.review_advertiser_link_request(
   _request_id uuid,
-  _decision text
+  _decision text,
+  _verification_evidence text DEFAULT NULL
 )
 RETURNS void
 LANGUAGE plpgsql
@@ -62,6 +66,9 @@ BEGIN
   IF _decision NOT IN ('approve', 'reject') THEN
     RAISE EXCEPTION 'decision must be approve or reject' USING ERRCODE = '22023';
   END IF;
+  IF _decision = 'approve' AND length(trim(COALESCE(_verification_evidence, ''))) < 10 THEN
+    RAISE EXCEPTION 'approval requires a verification evidence note of at least 10 characters' USING ERRCODE = '22023';
+  END IF;
 
   SELECT * INTO v_request
   FROM public.advertiser_link_requests
@@ -72,14 +79,17 @@ BEGIN
   END IF;
 
   IF _decision = 'approve' THEN
-    SELECT count(*), min(p.id), min(p.username)
-    INTO v_match_count, v_player_id, v_player_username
+    SELECT count(*) INTO v_match_count
     FROM public.players AS p
     WHERE lower(p.username) = lower(trim(v_request.requested_username));
 
     IF v_match_count <> 1 THEN
       RAISE EXCEPTION 'requested username must match exactly one legacy player';
     END IF;
+
+    SELECT p.id, p.username INTO v_player_id, v_player_username
+    FROM public.players AS p
+    WHERE lower(p.username) = lower(trim(v_request.requested_username));
 
     SELECT * INTO v_existing_profile
     FROM public.advertiser_profiles
@@ -103,7 +113,8 @@ BEGIN
           updated_at = now();
 
     UPDATE public.advertiser_link_requests
-    SET status = 'approved', reviewed_by = (SELECT auth.uid()), reviewed_at = now()
+    SET status = 'approved', reviewed_by = (SELECT auth.uid()), reviewed_at = now(),
+        reviewed_evidence = trim(_verification_evidence)
     WHERE id = _request_id;
   ELSE
     UPDATE public.advertiser_link_requests
@@ -113,7 +124,7 @@ BEGIN
 END
 $$;
 
-REVOKE ALL ON FUNCTION public.review_advertiser_link_request(uuid, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.review_advertiser_link_request(uuid, text) TO authenticated;
-COMMENT ON FUNCTION public.review_advertiser_link_request(uuid, text) IS
-  'Admin-only atomic review of advertiser legacy-account links. Approval requires one exact case-insensitive username match and enforces one-to-one profile linking.';
+REVOKE ALL ON FUNCTION public.review_advertiser_link_request(uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.review_advertiser_link_request(uuid, text, text) TO authenticated;
+COMMENT ON FUNCTION public.review_advertiser_link_request(uuid, text, text) IS
+  'Admin-only atomic review of advertiser legacy-account links. Approval requires recorded verification evidence, exactly one case-insensitive username match, and one-to-one profile linking.';

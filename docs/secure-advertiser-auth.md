@@ -1,49 +1,68 @@
 # Secure advertiser authentication and ownership model
 
-This document records the audit findings and the staged remediation for Indexsis Clone2.
+This document records the audit findings, staged remediation, and validation status for Indexsis Clone2.
 
 ## Findings verified in the repository
 
-The existing advertiser portal is not database-secure:
+- `src/utils/playerAuth.ts` uses browser-side SHA-256 and reads legacy player password hashes.
+- The original advertiser session trusted a `localStorage` player object; that is not an authorization boundary.
+- Historical advertiser migrations include broad client grants and permissive policies.
+- Client-side owner filters are not authorization.
+- Financial approval and balance changes must not be trusted to browser code.
 
-- `src/utils/playerAuth.ts` hashes passwords with plain SHA-256 in the browser, reads `password_hash` from `public.players`, and returns a player ID to the browser.
-- `src/hooks/useAdvertiserSession.ts` treats a `localStorage` value as the session. A browser-stored player ID is not a trusted identity.
-- Several migrations grant anonymous/authenticated users broad writes and use `USING (true)` / `WITH CHECK (true)` on advertiser data.
-- `src/hooks/useAdCampaigns.ts` and related hooks filter by a browser-provided owner ID. A client-side filter is not authorization.
-- Payment approval currently updates payment status and advertiser balances from browser code. That is a financial integrity issue, not just an RLS issue.
+Do not deploy historical permissive advertiser migrations as a security solution.
 
-Do not deploy the historical permissive advertiser migrations as a security solution.
+## Hardening already committed on `secure-advertiser-hardening`
 
-## What the hardening migration does
+- `20261113000000_secure_advertiser_identity.sql` establishes Auth-to-player mapping and restrictive read policies, removes old advertiser policies, and revokes direct client writes to sensitive records.
+- Supabase Auth-backed advertiser login, session checks, and portal gating are in place.
+- Unlinked Auth users are blocked from legacy advertiser data.
+- `20261115090000_advertiser_link_requests.sql` adds owner-scoped link requests and an admin-only atomic review RPC. Approval requires one unique username match and a recorded independent verification-evidence note.
+- Admin UI lists pending requests and calls the RPC; the RPC and RLS—not UI visibility—are the security boundary.
 
-`supabase/migrations/20261113000000_secure_advertiser_identity.sql` is a fail-closed first stage:
+## Important constraints / known limitations
 
-- establishes an Auth-user-to-player mapping table;
-- does not link accounts automatically by username;
-- creates a database helper that maps `auth.uid()` to a linked player ID;
-- checks admin role from the authenticated request;
-- removes existing policies on advertiser tables before installing restricted policies;
-- allows public clients to read only active overlay assets and live, approved campaign rows;
-- limits signed-in advertisers to their linked owner's rows and admins to all rows;
-- revokes direct client writes to campaigns, bids, slots, balances, payments, history, and admin wallet;
-- removes overlay storage upload policies while retaining public reads.
+- Never approve based solely on a username match or applicant-supplied note. Admins must independently verify ownership using an approved channel and record the evidence. The text field is an audit note, not proof by itself.
+- The migration is not applied to any database by this work. No staging Supabase credentials or project access were provided, so remote schema and behavior remain unverified.
+- The migration assumes prior historical migrations created `players`, `user_roles`, and `advertiser_profiles` with the referenced columns. Validate against the actual staging schema first.
+- The initial admin role must be provisioned through a trusted operator path; never from a browser.
+- Sensitive campaign, storage, payment, bid, balance, moderation, and history writes remain disabled/revoked until trusted backend operations are implemented.
+- Do not use the project ID in `supabase/config.toml` as proof that this is a disposable staging project. Confirm the target environment out of band before applying migrations.
 
-This intentionally disables old browser-only advertiser sessions and some advertiser/admin write workflows until the application is migrated. That is safer than silently allowing cross-account or unauthenticated mutations.
+## Staging validation checklist (not yet run)
 
-## Not production-ready until these steps are complete
+### Preflight
 
-1. Migrate advertiser registration/login from `players.password_hash` to Supabase Auth. Do not collect or store a replacement password hash in client code. Username-only login needs a deliberate design because Supabase Auth uses email/phone identifiers; make recovery and verification functional rather than inventing an unowned email address.
-2. Implement account recovery and secure email verification. Do not automatically link an Auth account to a legacy `players` row based on username. Use a reviewed, verified account-link process.
-3. Provision the initial administrator through a trusted Supabase dashboard/service-role operation. Never let a browser insert into `user_roles`. Record the admin Auth UUID and have an authorized operator assign the role.
-4. Move campaign creation, payment request creation/approval, balance crediting, bids, auction-slot updates/refunds, moderation, and history writes into authenticated Edge Functions or carefully audited RPCs. Verify the caller and validate all fields server-side. Do not put a service-role key in the frontend.
-5. Update storage uploads to use authenticated owner-scoped paths and explicit storage policies.
-6. Update the frontend hooks and admin portal to use the Auth UUID/session and secure backend operations. Client-side owner filters may remain for usability but never serve as authorization.
-7. On a staging project, test both advertisers (A and B), admin, and anonymous access. Verify A cannot read, update, delete, or create records for B; non-admin cannot approve payments, alter balances, or grant roles; the game can read only active overlays/live approved ads.
-8. Reconcile the actual remote schema and data before applying migrations. A blank `Remote` column in `supabase migration list --remote` means a migration version is not recorded as applied; it does not prove that the corresponding schema objects or data are absent.
+1. Confirm the Supabase project is a disposable/staging project, not production.
+2. Back up or snapshot staging and record its project reference.
+3. Reconcile migration history and actual schema. Check the `players` ID type, username uniqueness/case behavior, `user_roles` shape, existing profile rows, and function ownership.
+4. Review the SQL with a database owner. The review RPC is `SECURITY DEFINER`; confirm its owner is a trusted migration role and `current_user_is_admin()` safely checks the caller's role.
+5. Apply migrations in order only after preflight. Do not use production credentials or run `db push` against an unconfirmed target.
 
-## Migration caveats
+### Behavior tests
 
-- The migration assumes the historical Clone2 migrations have created `user_roles`, `players`, and the advertiser tables. It is not a baseline for a fresh database.
-- Existing rows stay linked to legacy player IDs. Since a username match is not proof of ownership, profiles are created unlinked; a verified admin workflow must connect legitimate accounts before advertisers can see historical data.
-- The migration deliberately does not enable writes through the old portal. The UI migration and trusted server operations are required before the feature can be considered complete.
-- Test and review this SQL on a disposable/staging clone first. Do not apply it to production directly.
+Use distinct Auth users A, B, and Admin, and two legacy players A and B. Record test IDs and clean up only in staging.
+
+- Anonymous: cannot select/insert/update/delete link requests; cannot read private balances, bids, payment records, history, or private overlay/campaign rows.
+- User A: can submit a request for their own Auth UUID; cannot submit for B; cannot read B's request; cannot update/delete any request or write an advertiser profile mapping.
+- Duplicate pending request from A fails under the unique partial index.
+- User A cannot execute approve/reject successfully even when supplying a valid request ID.
+- Admin can list pending requests and reject one; request records reviewer and time; rejected request does not create/change a profile mapping.
+- Admin approval without evidence or with fewer than 10 trimmed characters fails.
+- Admin approval with independently verified evidence links the exact unique legacy player in one transaction and records reviewer/time/evidence.
+- Ambiguous/nonexistent username fails; no profile is changed.
+- A player already linked to B cannot be linked to A; an Auth user already linked to a different player cannot be relinked.
+- Concurrent approvals for the same player: only one mapping succeeds; verify unique constraints in the actual schema enforce this under concurrency.
+- After approval, A sees only A-owned rows; B cannot see A's rows; anonymous users see only explicitly public live/active content.
+- Direct client writes to financial/moderation tables remain denied for advertiser and admin roles.
+
+### UI and build tests
+
+- Sign up/sign in/out and session restoration work; unlinked users see the link gate.
+- Submitting a request shows pending state; rejected users may submit again; after approval, refresh/re-auth causes the portal to unlock only for the linked profile.
+- Admin UI is not treated as authorization; RPC/RLS deny non-admin requests regardless of UI state.
+- Run `npm run lint` and `npm run build`; manually inspect SQL lint/schema errors before staging execution.
+
+## Status
+
+Code and checklist are committed to the secure branch. Build, lint, migration execution, staging access-control tests, and production deployment have not been performed. Production rollout remains explicitly out of scope until staging results are reviewed.
