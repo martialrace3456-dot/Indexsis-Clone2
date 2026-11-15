@@ -1,51 +1,99 @@
-import { useEffect, useState, useCallback, useSyncExternalStore } from "react";
-import { loginPlayer, registerPlayer, Player } from "@/utils/playerAuth";
+import { useCallback, useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { setAuthenticatedAdvertiserId } from "@/utils/currentAdvertiser";
 
-const STORAGE_KEY = "advertiser_player";
-
-let currentPlayer: Player | null = (() => {
-  try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    return raw ? (JSON.parse(raw) as Player) : null;
-  } catch { return null; }
-})();
-const listeners = new Set<() => void>();
-const subscribe = (l: () => void) => { listeners.add(l); return () => listeners.delete(l); };
-const getSnapshot = () => currentPlayer;
-const persist = (p: Player | null) => {
-  currentPlayer = p;
-  try {
-    if (p) localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-    else localStorage.removeItem(STORAGE_KEY);
-  } catch { /* noop */ }
-  listeners.forEach((l) => l());
+type AuthUser = {
+  id: string;
+  email?: string | null;
+  created_at?: string;
+  user_metadata?: Record<string, unknown>;
 };
 
+export interface AdvertiserPlayer {
+  id: string;
+  username: string;
+}
+
 export function useAdvertiserSession() {
-  const player = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  const [loading, setLoading] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [player, setPlayer] = useState<AdvertiserPlayer | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [requiresLink, setRequiresLink] = useState(false);
 
-  const login = useCallback(async (username: string, password: string) => {
-    const p = await loginPlayer(username, password);
-    if (!p) return { error: "Invalid username or password." };
-    persist(p);
+  useEffect(() => {
+    let mounted = true;
+    let request = 0;
+
+    const loadProfile = async (user: AuthUser | null) => {
+      const currentRequest = ++request;
+      if (!user) {
+        setAuthUser(null);
+        setPlayer(null);
+        setRequiresLink(false);
+        setAuthenticatedAdvertiserId(null);
+        if (mounted) setLoading(false);
+        return;
+      }
+
+      setAuthUser(user);
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("advertiser_profiles" as never)
+        .select("player_id, username")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!mounted || currentRequest !== request) return;
+
+      if (error) {
+        // Missing profile/schema or database failure must fail closed.
+        console.error("Unable to load advertiser profile", error);
+        setPlayer(null);
+        setRequiresLink(true);
+        setAuthenticatedAdvertiserId(null);
+      } else {
+        const profile = data as unknown as { player_id: string | null; username: string } | null;
+        if (profile?.player_id) {
+          const nextPlayer = { id: profile.player_id, username: profile.username };
+          setPlayer(nextPlayer);
+          setRequiresLink(false);
+          setAuthenticatedAdvertiserId(profile.player_id);
+        } else {
+          setPlayer(null);
+          setRequiresLink(true);
+          setAuthenticatedAdvertiserId(null);
+        }
+      }
+      setLoading(false);
+    };
+
+    const hydrate = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!mounted) return;
+      if (error) console.error("Unable to restore advertiser auth session", error);
+      await loadProfile((data.session?.user as AuthUser | undefined) ?? null);
+    };
+
+    void hydrate();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Defer database work until after the auth callback returns.
+      queueMicrotask(() => void loadProfile((session?.user as AuthUser | undefined) ?? null));
+    });
+
+    return () => {
+      mounted = false;
+      request += 1;
+      listener.subscription.unsubscribe();
+      setAuthenticatedAdvertiserId(null);
+    };
+  }, []);
+
+  const logout = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) return { error: error.message };
+    setAuthenticatedAdvertiserId(null);
     return { error: null };
   }, []);
 
-  const register = useCallback(async (
-    username: string,
-    password: string,
-    email?: string,
-    country?: string,
-    ageGroup?: string,
-  ) => {
-    const p = await registerPlayer(username, password, country, ageGroup, email);
-    if (!p) return { error: "Username already taken or registration failed." };
-    persist(p);
-    return { error: null };
-  }, []);
-
-  const logout = useCallback(() => persist(null), []);
-
-  return { player, loading, login, register, logout };
+  return { authUser, player, loading, requiresLink, logout };
 }

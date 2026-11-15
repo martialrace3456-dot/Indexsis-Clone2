@@ -1,5 +1,3 @@
-import { Player } from "./playerAuth";
-
 /** Override scope set by the admin "view as advertiser" screen. */
 export interface AdvertiserScope {
   ownerId: string;
@@ -8,24 +6,22 @@ export interface AdvertiserScope {
 }
 
 let scope: AdvertiserScope | null = null;
+let authenticatedAdvertiserId: string | null = null;
 
-export function setAdvertiserScope(s: AdvertiserScope | null) {
-  scope = s;
+export function setAdvertiserScope(next: AdvertiserScope | null) {
+  scope = next;
 }
 
 export function getAdvertiserScope(): AdvertiserScope | null {
   return scope;
 }
 
+/** Cached only for query convenience; database RLS remains the authorization boundary. */
+export function setAuthenticatedAdvertiserId(id: string | null) {
+  authenticatedAdvertiserId = id;
+}
+
 export function getCurrentAdvertiserId(): string | null {
-  // When the admin is viewing an advertiser's data, every owner-scoped
-  // hook reads that advertiser's id instead of the signed-in one.
   if (scope) return scope.ownerId;
-  try {
-    const raw = localStorage.getItem("advertiser_player");
-    if (!raw) return null;
-    return (JSON.parse(raw) as Player).id;
-  } catch {
-    return null;
-  }
+  return authenticatedAdvertiserId;
 }

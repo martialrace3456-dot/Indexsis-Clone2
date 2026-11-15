@@ -1,54 +1,30 @@
-import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
 import { Label } from "@/components/ui/label";
 
 interface Props {
   open: boolean;
-  onOpenChange: (o: boolean) => void;
-  playerId: string;
-}
-
-interface ProfileRow {
+  onOpenChange: (open: boolean) => void;
   username: string;
-  email: string | null;
-  country: string | null;
-  age_group: string | null;
-  created_at: string;
+  email: string;
+  createdAt: string;
+  country?: string | null;
+  ageGroup?: string | null;
 }
 
-export function ProfileDialog({ open, onOpenChange, playerId }: Props) {
-  const [row, setRow] = useState<ProfileRow | null>(null);
-
-  useEffect(() => {
-    if (!open || !playerId) return;
-    (async () => {
-      const { data } = await supabase
-        .from("players")
-        .select("username, email, country, age_group, created_at")
-        .eq("id", playerId)
-        .maybeSingle();
-      setRow((data as ProfileRow) ?? null);
-    })();
-  }, [open, playerId]);
-
+export function ProfileDialog({ open, onOpenChange, username, email, createdAt, country, ageGroup }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Profile</DialogTitle>
         </DialogHeader>
-        {!row ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : (
-          <div className="space-y-3">
-            <Field label="Username" value={row.username} />
-            <Field label="Email" value={row.email || "—"} />
-            <Field label="Country" value={row.country || "—"} />
-            <Field label="Age" value={row.age_group || "—"} />
-            <Field label="Member since" value={new Date(row.created_at).toLocaleDateString()} />
-          </div>
-        )}
+        <div className="space-y-3">
+          <Field label="Username" value={username} />
+          <Field label="Email" value={email || "—"} />
+          <Field label="Country" value={country || "—"} />
+          <Field label="Age" value={ageGroup || "—"} />
+          <Field label="Member since" value={createdAt ? new Date(createdAt).toLocaleDateString() : "—"} />
+        </div>
       </DialogContent>
     </Dialog>
   );

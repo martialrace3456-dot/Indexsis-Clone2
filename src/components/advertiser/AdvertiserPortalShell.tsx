@@ -17,10 +17,16 @@ const NAV: { id: PortalTab; label: string; icon: typeof Home }[] = [
 ];
 
 export function AdvertiserPortalShell() {
-  const { player, logout } = useAdvertiserSession();
+  const { player, authUser, logout } = useAdvertiserSession();
   const { loadAmount, heldAmount, available } = useAdvertiserBalance();
   const [tab, setTab] = useState<PortalTab>("home");
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const handleLogout = async () => {
+    const { error } = await logout();
+    if (error) toast.error(error);
+    else toast.success("Signed out");
+  };
 
   return (
     <AdvertiserNavProvider tab={tab} setTab={setTab}>
@@ -63,7 +69,7 @@ export function AdvertiserPortalShell() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="w-full justify-between px-2">
-                  <span className="truncate">{player?.username}</span>
+                  <span className="truncate">{player?.username ?? authUser?.email}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -71,7 +77,7 @@ export function AdvertiserPortalShell() {
                 <DropdownMenuItem onClick={() => setProfileOpen(true)}>
                   <User className="h-4 w-4 mr-2" /> Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { logout(); toast.success("Signed out"); }}>
+                <DropdownMenuItem onClick={() => void handleLogout()}>
                   <LogOut className="h-4 w-4 mr-2" /> Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -83,8 +89,16 @@ export function AdvertiserPortalShell() {
           <OverlayManager activeTab={tab} hideHeader hideTabsBar />
         </main>
 
-        {player && (
-          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} playerId={player.id} />
+        {player && authUser && (
+          <ProfileDialog
+            open={profileOpen}
+            onOpenChange={setProfileOpen}
+            username={player.username}
+            email={authUser.email ?? ""}
+            createdAt={authUser.created_at ?? ""}
+            country={typeof authUser.user_metadata?.country === "string" ? authUser.user_metadata.country : null}
+            ageGroup={typeof authUser.user_metadata?.age_group === "string" ? authUser.user_metadata.age_group : null}
+          />
         )}
       </div>
     </AdvertiserNavProvider>
